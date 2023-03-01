@@ -1,0 +1,7 @@
+# Create a workspace
+[workspace]
+
+members = [
+    "default-project",
+    "http-project"
+ ]
