@@ -4,8 +4,8 @@ use aws_sdk_ec2::{
     Client,
 };
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
-
 use serde::{Deserialize};
+mod response;
 
 /// This is a made-up example. Requests come into the runtime as unicode
 /// strings in json format, which can map to any structure that implements `serde::Deserialize`
@@ -13,27 +13,6 @@ use serde::{Deserialize};
 #[derive(Deserialize)]
 struct Request {
     command: String,
-}
-
-mod Response {
-    use serde::Serialize;
-
-    /// This is a made-up example of what a response structure may look like.
-    /// There is no restriction on what it can be. The runtime requires responses
-    /// to be serialized into json. The runtime pays no attention
-    /// to the contents of the response payload.
-    #[derive(Serialize,Default)]
-    pub struct Response {
-        pub req_id: String,
-        pub instances: Vec<Instance>,
-    }
-
-    #[derive(Serialize,Default)]
-    pub struct Instance {
-        pub id: String,
-        pub state: String,
-        pub ip: Option<String>
-    }
 }
 
 fn instance_reservations<'a>(
@@ -47,14 +26,26 @@ fn instance_reservations<'a>(
         .flatten()
 }
 
+fn instance_state_name(state: &InstanceStateName) -> String {
+    match state {
+        InstanceStateName::Pending => "pending",
+        InstanceStateName::Running => "running",
+        InstanceStateName::ShuttingDown => "shutting-down",
+        InstanceStateName::Terminated => "terminated",
+        InstanceStateName::Stopping => "stopping",
+        InstanceStateName::Stopped => "stopped",
+        _ => "unknown"
+    }.to_string()
+}
+
 /// This is the main body for the function.
 /// Write your code inside it.
 /// There are some code example in the following URLs:
 /// - https://github.com/awslabs/aws-lambda-rust-runtime/tree/main/examples
 /// - https://github.com/aws-samples/serverless-rust-demo/
-async fn function_handler(event: LambdaEvent<Request>) -> Result<Response::Response, Error> {
+async fn function_handler(event: LambdaEvent<Request>) -> Result<response::Response, Error> {
     // Extract some useful info from the request
-    let command = event.payload.command;
+    let _command = event.payload.command;
 
     let config = aws_config::from_env().load().await;
 
@@ -66,27 +57,21 @@ async fn function_handler(event: LambdaEvent<Request>) -> Result<Response::Respo
         .await
         .map_err(|e| e.to_string())?;
 
-    let instances = instance_reservations    
+    let instances = instance_reservations(instances).filter_map(|i| {
+        let id = i.instance_id()?;
+        let state = i.state()?.name()?;
+        let ip = i.public_ip_address();
+        Some(response::Instance {
+            id: String::from(id),
+            state: instance_state_name(state),
+            ip: ip.map(|s| String::from(s)),
+        })
+    });
 
-    for instance in instance_reservations(instances) {
-        let (instance_id, state) = (instance.instance_id().unwrap(), instance.state().unwrap());
-        let name = state.name().unwrap();
-        match name {
-            InstanceStateName::Stopped => {
-                // _ = client
-                //     .start_instances()
-                //     .instance_ids(instance_id)
-                //     .send()
-                //     .await
-                //     .map_err(|e| e.to_string())?;
-            }
-            InstanceStateName::Running => {
-                // let public_ip = instance.public_ip_address().unwrap();
-                // return Ok(String::from(public_ip));
-            }
-            _ => {} // probably an in-between state
-        }
-    }
+    let response = response::Response {
+        req_id: event.context.request_id,
+        instances: instances.collect(),
+    };
 
     // Return `Response` (it will be serialized to JSON automatically by the runtime)
     Ok(response)
