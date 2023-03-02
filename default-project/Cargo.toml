@@ -22,3 +22,5 @@ tokio = { version = "1", features = ["macros"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
 
+aws-config = "^0"
+aws-sdk-ec2 = "^0"

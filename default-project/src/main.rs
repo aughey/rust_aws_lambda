@@ -1,4 +1,9 @@
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
+use aws_sdk_ec2::{
+    model::{Instance, InstanceStateName},
+    output::DescribeInstancesOutput,
+    Client,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +33,16 @@ struct Response {
 async fn function_handler(event: LambdaEvent<Request>) -> Result<Response, Error> {
     // Extract some useful info from the request
     let command = event.payload.command;
+
+    let config = aws_config::from_env().load().await;
+
+    let client = Client::new(&config);
+
+    let instances = client
+        .describe_instances()
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Prepare the response
     let resp = Response {
