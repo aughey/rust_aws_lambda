@@ -60,6 +60,8 @@ async fn function_handler_provision(
 ) -> Result<response::RunningInstance, Error> {
     let tags_requested = &command.tags;
 
+    tracing::info!("Request started for tags: {:?}", tags_requested);
+
     // There must be at least one tag
     if tags_requested.is_empty() {
         return Err("No tags provided".into());
@@ -75,16 +77,22 @@ async fn function_handler_provision(
 
     let mut actions = vec![];
 
+    tracing::info!("Starting main search loop");
+
     let instance = loop {
         if start.elapsed().as_secs() >= 60 {
             return Err("Timeout".into());
         }
+
+        tracing::info!("Requesting Instances");
 
         let instances = client
             .describe_instances()
             .send()
             .await
             .map_err(|e| e.to_string())?;
+
+        tracing::info!("Got instances");
 
         let reservations = instance_reservations(instances);
 
